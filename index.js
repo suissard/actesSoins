@@ -22,6 +22,7 @@
             color: #2563eb; /* blue-600 */
         }
         .chart-container {
+            position: relative;
             min-height: 450px;
             max-height: 70vh;
         }
@@ -58,13 +59,17 @@
             color: white;
             border-color: #3b82f6;
         }
+        /* Curseur pour les graphiques cliquables */
+        #main-chart {
+            cursor: pointer;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
 
-    <div id="app" class="container mx-auto p-4 md:p-8">
+    <div id="app" class="container mx-auto p-6 md:p-10">
         
-        <header class="text-center mb-8">
+        <header class="text-center mb-12">
             <h1 class="text-3xl md:text-4xl font-bold text-blue-600">📊 Tableau de Bord d'Analyse des Soins</h1>
             <p class="text-gray-600 mt-2">Chargez votre fichier Excel pour générer les statistiques.</p>
         </header>
@@ -93,9 +98,9 @@
         </div>
         
         <!-- Section du tableau de bord (cachée par défaut) -->
-        <main id="dashboard-section" class="hidden bg-white p-4 md:p-6 rounded-lg shadow-lg">
+        <main id="dashboard-section" class="hidden bg-white p-6 md:p-8 rounded-lg shadow-lg">
             <!-- Onglets de navigation -->
-            <nav class="flex flex-wrap border-b border-gray-200 mb-6">
+            <nav class="flex flex-wrap border-b border-gray-200 mb-8">
                 <button data-tab="qualite" class="tab-button active py-3 px-4 font-medium text-gray-600 border-b-2 border-transparent hover:border-blue-500 hover:text-blue-600">Qualité des Soins</button>
                 <button data-tab="intervenants" class="tab-button py-3 px-4 font-medium text-gray-600 border-b-2 border-transparent hover:border-blue-500 hover:text-blue-600">Analyse Intervenants</button>
                 <button data-tab="residents" class="tab-button py-3 px-4 font-medium text-gray-600 border-b-2 border-transparent hover:border-blue-500 hover:text-blue-600">Suivi Résidents</button>
@@ -103,16 +108,16 @@
             </nav>
 
             <!-- Contenu des onglets -->
-            <div id="tab-content" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div id="tab-content" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <!-- Section des filtres -->
-                <aside id="filter-section" class="lg:col-span-3 lg:order-last bg-gray-50 p-4 rounded-lg transition-all duration-300">
+                <aside id="filter-section" class="lg:col-span-1 lg:order-last bg-gray-50 p-6 rounded-lg transition-all duration-300">
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="text-lg font-bold text-gray-700">🔎 Filtres</h3>
                         <button id="toggle-filters-btn" title="Masquer/Afficher les filtres" class="p-1 rounded-full hover:bg-gray-200">
-                            <svg id="toggle-icon" class="w-5 h-5 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                            <svg id="toggle-icon" class="w-5 h-5 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>
                         </button>
                     </div>
-                    <div id="filters-content" class="space-y-4">
+                    <div id="filters-content" class="space-y-4 hidden">
                         <!-- Filtre Résident -->
                         <div>
                             <div class="flex justify-between items-center mb-1">
@@ -165,18 +170,19 @@
                 </aside>
 
                 <!-- Contenu principal (graphique et infos) -->
-                <div id="main-content-area" class="lg:col-span-9 grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all duration-300">
-                    <div class="lg:col-span-2 bg-gray-50 p-4 rounded-lg chart-container">
+                <div id="main-content-area" class="lg:col-span-11 grid grid-cols-1 lg:grid-cols-3 gap-8 transition-all duration-300">
+                    <div class="lg:col-span-2 bg-gray-50 p-6 rounded-lg chart-container overflow-auto">
                         <div id="intervenant-options" class="hidden text-center mb-2">
                             <button data-view="total" class="intervenant-view-btn active-view-btn px-3 py-1 text-sm rounded-l-md">Volume Total</button>
                             <button data-view="average" class="intervenant-view-btn px-3 py-1 text-sm rounded-r-md">Moyenne par Jour</button>
                         </div>
                         <canvas id="main-chart"></canvas>
                     </div>
-                    <div id="side-info" class="lg:col-span-1 bg-gray-50 p-4 rounded-lg">
+                    <div id="side-info" class="lg:col-span-1 bg-gray-50 p-6 rounded-lg">
                         <h3 id="side-title" class="text-lg font-bold mb-4 text-gray-700">Informations Clés</h3>
                         <div id="side-content"></div>
                     </div>
+                    <div id="full-data-table-container" class="hidden lg:col-span-3 mt-6"></div>
                 </div>
             </div>
         </main>
@@ -195,6 +201,7 @@
         const selectAllButtons = document.querySelectorAll('.select-all-btn');
         const intervenantOptions = document.getElementById('intervenant-options');
         const intervenantViewBtns = document.querySelectorAll('.intervenant-view-btn');
+        const fullDataTableContainer = document.getElementById('full-data-table-container');
 
         // Éléments pour les filtres
         const toggleFiltersBtn = document.getElementById('toggle-filters-btn');
@@ -214,7 +221,7 @@
         let chartInstance = null;
         let fullData = [];
         let filteredData = [];
-        let isFiltersVisible = true;
+        let isFiltersVisible = false;
 
         const COLUMNS = {
             RESIDENT: 'Résident', SOIN: 'Information', ETAT: 'État',
@@ -272,18 +279,16 @@
             isFiltersVisible = !isFiltersVisible;
             filtersContent.classList.toggle('hidden');
             const icon = document.getElementById('toggle-icon');
+
+            filterSection.classList.toggle('lg:col-span-1');
+            filterSection.classList.toggle('lg:col-span-3');
+            mainContentArea.classList.toggle('lg:col-span-11');
+            mainContentArea.classList.toggle('lg:col-span-9');
+
             if(isFiltersVisible) {
-                filterSection.classList.remove('lg:col-span-1');
-                filterSection.classList.add('lg:col-span-3');
-                mainContentArea.classList.remove('lg:col-span-12');
-                mainContentArea.classList.add('lg:col-span-9');
-                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />`;
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />`; // Chevron Down
             } else {
-                filterSection.classList.remove('lg:col-span-3');
-                filterSection.classList.add('lg:col-span-1');
-                mainContentArea.classList.remove('lg:col-span-9');
-                mainContentArea.classList.add('lg:col-span-12');
-                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />`;
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />`; // Chevron Up
             }
         });
         
@@ -308,7 +313,7 @@
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.value = name;
-                checkbox.id = `${type}-${name.replace(/\s/g, '')}`;
+                checkbox.id = `${type}-${name.replace(/[^a-zA-Z0-9]/g, '')}`;
                 checkbox.checked = true;
                 checkbox.className = 'mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500';
 
@@ -384,11 +389,26 @@
             if (!name) return "Non spécifié";
             return String(name).replace(/\s*\(.*\)\s*/, '').replace(/Née.*/, '').trim();
         }
+
+        function getStatusColor(etat) {
+            const etatLower = String(etat).toLowerCase();
+            if (etatLower.includes('refus')) return '#ef4444';
+            if (etatLower.includes('absent')) return '#f97316';
+            if (etatLower.includes('non nécessaire')) return '#6b7280';
+            if (etatLower.includes('report')) return '#eab308';
+            const palette = ['#8b5cf6', '#ec4899', '#10b981', '#3b82f6'];
+            let hash = 0;
+            for (let i = 0; i < etat.length; i++) {
+                hash = etat.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return palette[Math.abs(hash) % palette.length];
+        }
         
         function handleEmptyData() {
             destroyChart();
             sideInfoTitle.textContent = "Aucune Donnée";
             sideInfoContent.innerHTML = '<p class="text-gray-500 text-center p-4">Aucune donnée ne correspond aux filtres sélectionnés.</p>';
+            fullDataTableContainer.innerHTML = '';
             const ctx = mainChartCanvas.getContext('2d');
             ctx.clearRect(0, 0, mainChartCanvas.width, mainChartCanvas.height);
             ctx.save();
@@ -401,7 +421,9 @@
         }
 
         function displayTabContent(tabName) {
-            intervenantOptions.classList.add('hidden'); // Cacher par défaut
+            intervenantOptions.classList.add('hidden');
+            fullDataTableContainer.classList.add('hidden');
+
             if (filteredData.length === 0) {
                 handleEmptyData();
                 return;
@@ -412,7 +434,8 @@
             switch (tabName) {
                 case 'qualite': displayQualiteStats(); break;
                 case 'intervenants':
-                    intervenantOptions.classList.remove('hidden'); // Afficher pour cet onglet
+                    intervenantOptions.classList.remove('hidden');
+                    fullDataTableContainer.classList.remove('hidden');
                     const currentView = document.querySelector('.intervenant-view-btn.active-view-btn').dataset.view;
                     displayIntervenantStats(currentView);
                     break;
@@ -431,38 +454,30 @@
             const sortedStatuses = Object.entries(statusCounts).sort((a, b) => b[1] - a[1]);
             const labels = sortedStatuses.map(item => item[0]);
             const data = sortedStatuses.map(item => item[1]);
-
-            const palette = ['#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#6b7280', '#ec4899'];
-            let colorIndex = 0;
-            const backgroundColors = labels.map(label => {
-                if (label.toLowerCase() === 'fait') return '#22c55e'; // Green
-                if (label.toLowerCase().includes('refus')) return '#ef4444'; // Red
-                const color = palette[colorIndex % palette.length];
-                colorIndex++;
-                return color;
-            });
+            const backgroundColors = labels.map(label => getStatusColor(label));
 
             renderChart('doughnut', 'Répartition globale des actes', {
                 labels: labels,
                 datasets: [{ data: data, backgroundColor: backgroundColors }]
-            });
+            }, 'etat');
 
             sideInfoTitle.textContent = "Répartition des actes";
             sideInfoContent.innerHTML = createListHTML(sortedStatuses);
         }
 
         function displayIntervenantStats(view = 'total') {
+            let tableData;
             if (view === 'total') {
                 const soinsParIntervenant = filteredData.filter(row => row[COLUMNS.ETAT] === 'Fait').reduce((acc, row) => {
                     const intervenant = cleanName(row[COLUMNS.INTERVENANT]);
                     acc[intervenant] = (acc[intervenant] || 0) + 1;
                     return acc;
                 }, {});
-                const sortedIntervenants = Object.entries(soinsParIntervenant).sort((a,b) => b[1] - a[1]);
+                tableData = Object.entries(soinsParIntervenant).sort((a,b) => b[1] - a[1]);
                 renderChart('bar', 'Volume de soins réalisés par intervenant', {
-                    labels: sortedIntervenants.map(item => item[0]),
-                    datasets: [{ label: 'Soins réalisés', data: sortedIntervenants.map(item => item[1]), backgroundColor: '#3b82f6' }]
-                });
+                    labels: tableData.map(item => item[0]),
+                    datasets: [{ label: 'Soins réalisés', data: tableData.map(item => item[1]), backgroundColor: '#3b82f6' }]
+                }, 'intervenant');
             } else { // average view
                 const statsParIntervenant = filteredData
                     .filter(row => row[COLUMNS.ETAT] === 'Fait' && row[COLUMNS.DATE_FAIT])
@@ -483,11 +498,11 @@
                     return [intervenant, average];
                 });
 
-                const sortedAverages = intervenantAverages.sort((a, b) => b[1] - a[1]);
+                tableData = intervenantAverages.sort((a, b) => b[1] - a[1]);
                 renderChart('bar', 'Volume moyen de soins par jour de présence', {
-                    labels: sortedAverages.map(item => item[0]),
-                    datasets: [{ label: 'Moyenne de soins/jour', data: sortedAverages.map(item => item[1].toFixed(2)), backgroundColor: '#16a34a' }]
-                });
+                    labels: tableData.map(item => item[0]),
+                    datasets: [{ label: 'Moyenne de soins/jour', data: tableData.map(item => item[1].toFixed(2)), backgroundColor: '#16a34a' }]
+                }, 'intervenant');
             }
             
             sideInfoTitle.textContent = "Soins les plus refusés (par type)";
@@ -497,66 +512,206 @@
                 return acc;
             }, {});
             const sortedSoinsRefuses = Object.entries(soinsRefuses).sort((a, b) => b[1] - a[1]).slice(0, 5);
-            sideInfoContent.innerHTML = createListHTML(sortedSoinsRefuses);
+            sideInfoContent.innerHTML = createListHTML(sortedSoinsRefuses, '#ef4444');
+            renderIntervenantTable(tableData, view);
+        }
+
+        function renderIntervenantTable(data, view) {
+            if (!data || data.length === 0) {
+                fullDataTableContainer.innerHTML = '';
+                return;
+            }
+
+            const headerText = view === 'total' ? 'Actes Réalisés' : 'Moyenne Actes/Jour';
+            let tableHTML = `
+                <div class="bg-gray-50 p-6 rounded-lg">
+                    <h4 class="text-md font-bold mb-3 text-gray-700">Tableau des Données Complètes</h4>
+                    <div class="max-h-96 overflow-y-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Intervenant</th>
+                                    <th scope="col" class="px-6 py-3">${headerText}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            data.forEach(([key, value]) => {
+                const displayValue = typeof value === 'number' ? value.toFixed(2).replace('.00', '') : value;
+                tableHTML += `
+                    <tr class="bg-white border-b hover:bg-gray-50">
+                        <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${key}</td>
+                        <td class="px-6 py-4">${displayValue}</td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            fullDataTableContainer.innerHTML = tableHTML;
         }
 
         function displayResidentStats() {
-             const refusParResident = filteredData.filter(row => row[COLUMNS.ETAT] && String(row[COLUMNS.ETAT]).toLowerCase().includes('refus')).reduce((acc, row) => {
-                const resident = cleanName(row[COLUMNS.RESIDENT]);
-                acc[resident] = (acc[resident] || 0) + 1;
-                return acc;
-            }, {});
-            const sortedRefus = Object.entries(refusParResident).sort((a, b) => b[1] - a[1]);
-            renderChart('bar', 'Nombre de refus de soin par résident', {
-                labels: sortedRefus.map(item => item[0]),
-                datasets: [{ label: 'Refus', data: sortedRefus.map(item => item[1]), backgroundColor: '#f97316' }]
-            }, 'y');
-            sideInfoTitle.textContent = "Top 5 des résidents avec le plus de refus";
-            sideInfoContent.innerHTML = createListHTML(sortedRefus.slice(0, 5));
+            const nonFaitsParResident = filteredData
+                .filter(row => row[COLUMNS.ETAT] && String(row[COLUMNS.ETAT]).toLowerCase() !== 'fait')
+                .reduce((acc, row) => {
+                    const resident = cleanName(row[COLUMNS.RESIDENT]);
+                    const etat = row[COLUMNS.ETAT] || 'Non défini';
+                    if (!acc[resident]) {
+                        acc[resident] = {};
+                    }
+                    acc[resident][etat] = (acc[resident][etat] || 0) + 1;
+                    return acc;
+                }, {});
+
+            const allNonFaitEtats = [...new Set(filteredData
+                .map(row => row[COLUMNS.ETAT] || 'Non défini')
+                .filter(etat => etat.toLowerCase() !== 'fait')
+            )].sort();
+
+            const residentsSorted = Object.keys(nonFaitsParResident).sort((a, b) => {
+                const totalA = Object.values(nonFaitsParResident[a]).reduce((sum, count) => sum + count, 0);
+                const totalB = Object.values(nonFaitsParResident[b]).reduce((sum, count) => sum + count, 0);
+                return totalB - totalA;
+            });
+
+            const datasets = allNonFaitEtats.map(etat => {
+                return {
+                    label: etat,
+                    data: residentsSorted.map(resident => nonFaitsParResident[resident][etat] || 0),
+                    backgroundColor: getStatusColor(etat)
+                };
+            });
+            
+            renderChart('bar', 'Actes non réalisés par résident (par type)', {
+                labels: residentsSorted,
+                datasets: datasets
+            }, 'resident', 'y', true); // indexAxis='y', stacked=true
+
+            sideInfoTitle.textContent = "Top 5 des résidents (actes non réalisés)";
+            const totalNonFaitsList = residentsSorted.map(resident => {
+                const total = Object.values(nonFaitsParResident[resident]).reduce((sum, count) => sum + count, 0);
+                return [resident, total];
+            });
+
+            sideInfoContent.innerHTML = createListHTML(totalNonFaitsList.slice(0, 5));
         }
 
         function displayOperationnelStats() {
-            const usageSource = filteredData.reduce((acc, row) => {
+            const usageParIntervenant = filteredData.reduce((acc, row) => {
+                const intervenant = cleanName(row[COLUMNS.INTERVENANT]);
+                if (!acc[intervenant]) {
+                    acc[intervenant] = { total: 0, tablette: 0 };
+                }
+                acc[intervenant].total++;
                 let source = row[COLUMNS.SOURCE] || 'Non défini';
-                source = String(source);
-                if (source.toLowerCase().includes('tablette')) source = 'Tablette';
-                else if (source.toLowerCase().includes('ordi')) source = 'Ordinateur';
-                acc[source] = (acc[source] || 0) + 1;
+                if (String(source).toLowerCase().includes('tablette')) {
+                    acc[intervenant].tablette++;
+                }
                 return acc;
             }, {});
-            const sourceData = Object.entries(usageSource);
-            renderChart('pie', 'Répartition des saisies par source', {
-                labels: sourceData.map(item => item[0]),
-                datasets: [{ data: sourceData.map(item => item[1]), backgroundColor: ['#10b981', '#6366f1', '#f59e0b'] }]
-            });
-            sideInfoTitle.textContent = "Détail par Source";
-            sideInfoContent.innerHTML = createListHTML(sourceData);
+
+            const classement = Object.entries(usageParIntervenant).map(([intervenant, stats]) => {
+                const percentage = stats.total > 0 ? (stats.tablette / stats.total) * 100 : 0;
+                return { intervenant, percentage };
+            }).sort((a, b) => b.percentage - a.percentage);
+            
+            renderChart('bar', "Classement par % d'utilisation de la tablette", {
+                labels: classement.map(item => item.intervenant),
+                datasets: [{
+                    label: '% Utilisation Tablette',
+                    data: classement.map(item => item.percentage.toFixed(1)),
+                    backgroundColor: '#10b981'
+                }]
+            }, 'intervenant', 'y');
+
+            sideInfoTitle.textContent = "Top 5 des utilisateurs de tablette";
+            const top5 = classement.slice(0, 5).map(item => [item.intervenant, item.percentage]);
+            sideInfoContent.innerHTML = createPercentageListHTML(top5);
         }
 
-        function renderChart(type, title, data, indexAxis = 'x') {
+        function handleChartClick(type, label) {
+            let filterList;
+            switch (type) {
+                case 'resident': filterList = residentFilterList; break;
+                case 'intervenant': filterList = intervenantFilterList; break;
+                case 'etat': filterList = etatFilterList; break;
+                default: return;
+            }
+
+            const checkboxes = filterList.querySelectorAll('input[type="checkbox"]');
+            let found = false;
+            checkboxes.forEach(cb => {
+                if (cb.value === label) {
+                    cb.checked = true;
+                    found = true;
+                } else {
+                    cb.checked = false;
+                }
+            });
+
+            if (found) {
+                applyFilters();
+            }
+        }
+
+        function renderChart(type, title, data, chartType, indexAxis = 'x', stacked = false) {
             destroyChart();
             chartInstance = new Chart(mainChartCanvas.getContext('2d'), {
-                type: type, data: data,
+                type: type, 
+                data: data,
                 options: {
                     responsive: true, maintainAspectRatio: false, indexAxis: indexAxis,
+                    onClick: (event, elements) => {
+                        if (!chartType || elements.length === 0) return;
+                        const elementIndex = elements[0].index;
+                        const clickedLabel = chartInstance.data.labels[elementIndex];
+                        handleChartClick(chartType, clickedLabel);
+                    },
                     plugins: {
                         title: { display: true, text: title, font: { size: 18 }, padding: { top: 10, bottom: 20 } },
-                        legend: { position: type === 'doughnut' || type === 'pie' ? 'bottom' : 'top' }
+                        legend: { position: 'bottom' }
                     },
-                    scales: { x: { display: type === 'bar' }, y: { display: type === 'bar' } }
+                    scales: { 
+                        x: { display: type === 'bar', ticks: { autoSkip: false }, stacked: stacked }, 
+                        y: { display: type === 'bar', ticks: { autoSkip: false }, stacked: stacked } 
+                    }
                 }
             });
         }
         
-        function createListHTML(data) {
+        function createListHTML(data, color) {
             if (data.length === 0) return '<p class="text-gray-500">Aucune donnée à afficher.</p>';
+            let badgeClass = 'bg-blue-100 text-blue-800';
+            if (color) {
+                 if (color === '#ef4444') badgeClass = 'bg-red-100 text-red-800';
+            }
             let html = `<ul class="space-y-3">`;
             data.forEach(([key, value]) => {
                 const displayValue = typeof value === 'number' ? value.toFixed(2).replace('.00', '') : value;
                 html += `
                     <li class="flex justify-between items-center bg-white p-3 rounded-md shadow-sm">
                         <span class="text-sm font-medium text-gray-700 break-all pr-2">${key}</span>
-                        <span class="text-sm font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded-full">${displayValue}</span>
+                        <span class="text-sm font-bold ${badgeClass} px-2 py-1 rounded-full">${displayValue}</span>
+                    </li>`;
+            });
+            return html + '</ul>';
+        }
+
+        function createPercentageListHTML(data) {
+            if (data.length === 0) return '<p class="text-gray-500">Aucune donnée à afficher.</p>';
+            let html = `<ul class="space-y-3">`;
+            data.forEach(([key, value]) => {
+                const displayValue = `${value.toFixed(1)}%`;
+                html += `
+                    <li class="flex justify-between items-center bg-white p-3 rounded-md shadow-sm">
+                        <span class="text-sm font-medium text-gray-700 break-all pr-2">${key}</span>
+                        <span class="text-sm font-bold bg-teal-100 text-teal-800 px-2 py-1 rounded-full">${displayValue}</span>
                     </li>`;
             });
             return html + '</ul>';
@@ -564,4 +719,3 @@
     </script>
 </body>
 </html>
-
