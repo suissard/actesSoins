@@ -172,10 +172,7 @@
                 <!-- Contenu principal (graphique et infos) -->
                 <div id="main-content-area" class="lg:col-span-11 grid grid-cols-1 lg:grid-cols-3 gap-8 transition-all duration-300">
                     <div class="lg:col-span-2 bg-gray-50 p-6 rounded-lg chart-container overflow-auto">
-                        <div id="intervenant-options" class="hidden text-center mb-2">
-                            <button data-view="total" class="intervenant-view-btn active-view-btn px-3 py-1 text-sm rounded-l-md">Volume Total</button>
-                            <button data-view="average" class="intervenant-view-btn px-3 py-1 text-sm rounded-r-md">Moyenne par Jour</button>
-                        </div>
+                        <div id="intervenant-options" class="hidden text-center mb-2"></div>
                         <canvas id="main-chart"></canvas>
                     </div>
                     <div id="side-info" class="lg:col-span-1 bg-gray-50 p-6 rounded-lg">
@@ -434,10 +431,8 @@
             switch (tabName) {
                 case 'qualite': displayQualiteStats(); break;
                 case 'intervenants':
-                    intervenantOptions.classList.remove('hidden');
                     fullDataTableContainer.classList.remove('hidden');
-                    const currentView = document.querySelector('.intervenant-view-btn.active-view-btn').dataset.view;
-                    displayIntervenantStats(currentView);
+                    displayIntervenantStats();
                     break;
                 case 'residents': displayResidentStats(); break;
                 case 'operationnel': displayOperationnelStats(); break;
@@ -465,46 +460,38 @@
             sideInfoContent.innerHTML = createListHTML(sortedStatuses);
         }
 
-        function displayIntervenantStats(view = 'total') {
-            let tableData;
-            if (view === 'total') {
-                const soinsParIntervenant = filteredData.filter(row => row[COLUMNS.ETAT] === 'Fait').reduce((acc, row) => {
-                    const intervenant = cleanName(row[COLUMNS.INTERVENANT]);
-                    acc[intervenant] = (acc[intervenant] || 0) + 1;
-                    return acc;
-                }, {});
-                tableData = Object.entries(soinsParIntervenant).sort((a,b) => b[1] - a[1]);
-                renderChart('bar', 'Volume de soins réalisés par intervenant', {
-                    labels: tableData.map(item => item[0]),
-                    datasets: [{ label: 'Soins réalisés', data: tableData.map(item => item[1]), backgroundColor: '#3b82f6' }]
-                }, 'intervenant');
-            } else { // average view
-                const statsParIntervenant = filteredData
-                    .filter(row => row[COLUMNS.ETAT] === 'Fait' && row[COLUMNS.DATE_FAIT])
-                    .reduce((acc, row) => {
-                        const intervenant = cleanName(row[COLUMNS.INTERVENANT]);
-                        if (!acc[intervenant]) {
-                            acc[intervenant] = { totalSoins: 0, joursPresence: new Set() };
-                        }
-                        acc[intervenant].totalSoins++;
-                        const dateFait = String(row[COLUMNS.DATE_FAIT]).split(' ')[0];
-                        acc[intervenant].joursPresence.add(dateFait);
-                        return acc;
-                    }, {});
+        function displayIntervenantStats() {
+            const allEtats = [...new Set(filteredData.map(row => row[COLUMNS.ETAT] || 'Non défini'))].sort();
 
-                const intervenantAverages = Object.entries(statsParIntervenant).map(([intervenant, data]) => {
-                    const joursCount = data.joursPresence.size;
-                    const average = joursCount > 0 ? (data.totalSoins / joursCount) : 0;
-                    return [intervenant, average];
-                });
+            const statsParIntervenant = filteredData.reduce((acc, row) => {
+                const intervenant = cleanName(row[COLUMNS.INTERVENANT]);
+                const etat = row[COLUMNS.ETAT] || 'Non défini';
+                if (!acc[intervenant]) {
+                    acc[intervenant] = { total: 0 };
+                    allEtats.forEach(e => acc[intervenant][e] = 0);
+                }
+                acc[intervenant][etat] = (acc[intervenant][etat] || 0) + 1;
+                acc[intervenant].total++;
+                return acc;
+            }, {});
 
-                tableData = intervenantAverages.sort((a, b) => b[1] - a[1]);
-                renderChart('bar', 'Volume moyen de soins par jour de présence', {
-                    labels: tableData.map(item => item[0]),
-                    datasets: [{ label: 'Moyenne de soins/jour', data: tableData.map(item => item[1].toFixed(2)), backgroundColor: '#16a34a' }]
-                }, 'intervenant');
-            }
+            const intervenantsSorted = Object.keys(statsParIntervenant).sort((a, b) => {
+                return statsParIntervenant[b].total - statsParIntervenant[a].total;
+            });
+
+            const datasets = allEtats.map(etat => {
+                return {
+                    label: etat,
+                    data: intervenantsSorted.map(intervenant => statsParIntervenant[intervenant][etat] || 0),
+                    backgroundColor: getStatusColor(etat)
+                };
+            });
             
+            renderChart('bar', 'Répartition des actes par intervenant et par état', {
+                labels: intervenantsSorted,
+                datasets: datasets
+            }, 'intervenant', 'x', true);
+
             sideInfoTitle.textContent = "Soins les plus refusés (par type)";
             const soinsRefuses = filteredData.filter(row => row[COLUMNS.ETAT] && String(row[COLUMNS.ETAT]).toLowerCase().includes('refus')).reduce((acc, row) => {
                 const soin = row[COLUMNS.SOIN] || 'Soin non spécifié';
@@ -513,38 +500,58 @@
             }, {});
             const sortedSoinsRefuses = Object.entries(soinsRefuses).sort((a, b) => b[1] - a[1]).slice(0, 5);
             sideInfoContent.innerHTML = createListHTML(sortedSoinsRefuses, '#ef4444');
-            renderIntervenantTable(tableData, view);
+
+            const tableData = {
+                headers: ['Intervenant', ...allEtats, 'Total'],
+                rows: intervenantsSorted.map(intervenant => {
+                    const rowData = { 'Intervenant': intervenant };
+                    let total = 0;
+                    allEtats.forEach(etat => {
+                        const count = statsParIntervenant[intervenant][etat] || 0;
+                        rowData[etat] = count;
+                        total += count;
+                    });
+                    rowData['Total'] = total;
+                    return rowData;
+                })
+            };
+            renderIntervenantTable(tableData);
         }
 
-        function renderIntervenantTable(data, view) {
-            if (!data || data.length === 0) {
+        function renderIntervenantTable(data) {
+            if (!data || !data.rows || data.rows.length === 0) {
                 fullDataTableContainer.innerHTML = '';
                 return;
             }
 
-            const headerText = view === 'total' ? 'Actes Réalisés' : 'Moyenne Actes/Jour';
+            const { headers, rows } = data;
+
             let tableHTML = `
                 <div class="bg-gray-50 p-6 rounded-lg">
-                    <h4 class="text-md font-bold mb-3 text-gray-700">Tableau des Données Complètes</h4>
+                    <h4 class="text-md font-bold mb-3 text-gray-700">Tableau Détaillé par Intervenant</h4>
                     <div class="max-h-96 overflow-y-auto">
                         <table class="w-full text-sm text-left text-gray-500">
                             <thead class="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0">
-                                <tr>
-                                    <th scope="col" class="px-6 py-3">Intervenant</th>
-                                    <th scope="col" class="px-6 py-3">${headerText}</th>
-                                </tr>
+                                <tr>`;
+            headers.forEach(header => {
+                tableHTML += `<th scope="col" class="px-6 py-3">${header}</th>`;
+            });
+            tableHTML += `</tr>
                             </thead>
-                            <tbody>
-            `;
+                            <tbody>`;
 
-            data.forEach(([key, value]) => {
-                const displayValue = typeof value === 'number' ? value.toFixed(2).replace('.00', '') : value;
-                tableHTML += `
-                    <tr class="bg-white border-b hover:bg-gray-50">
-                        <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${key}</td>
-                        <td class="px-6 py-4">${displayValue}</td>
-                    </tr>
-                `;
+            rows.forEach(row => {
+                tableHTML += `<tr class="bg-white border-b hover:bg-gray-50">`;
+                headers.forEach(header => {
+                    const value = row[header];
+                    const isFirstColumn = header === 'Intervenant';
+                    if (isFirstColumn) {
+                        tableHTML += `<td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${value}</td>`;
+                    } else {
+                        tableHTML += `<td class="px-6 py-4">${value}</td>`;
+                    }
+                });
+                tableHTML += `</tr>`;
             });
 
             tableHTML += `
