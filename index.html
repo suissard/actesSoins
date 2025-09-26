@@ -322,6 +322,50 @@
                 itemDiv.appendChild(checkbox);
                 itemDiv.appendChild(label);
                 container.appendChild(itemDiv);
+
+                let pressTimer;
+                let isLongPress = false;
+
+                // --- Quick Filter Logic (Click and Hold) ---
+                const startPress = (e) => {
+                    // Only for left clicks
+                    if (e.button !== 0) return;
+
+                    isLongPress = false;
+                    pressTimer = window.setTimeout(() => {
+                        isLongPress = true;
+
+                        // Uncheck all checkboxes in this filter list
+                        const allCheckboxes = container.querySelectorAll('input[type="checkbox"]');
+                        allCheckboxes.forEach(cb => {
+                            cb.checked = false;
+                        });
+
+                        // Check the one that was long-pressed
+                        checkbox.checked = true;
+
+                        // Update the dashboard
+                        applyFilters();
+
+                    }, 500); // 500ms threshold for a long press
+                };
+
+                const cancelPress = () => {
+                    clearTimeout(pressTimer);
+                };
+
+                // Add listeners to the item
+                itemDiv.addEventListener('mousedown', startPress);
+                itemDiv.addEventListener('mouseup', cancelPress);
+                itemDiv.addEventListener('mouseleave', cancelPress);
+
+                // Prevent the default click action after a long press,
+                // which would otherwise un-toggle the checkbox.
+                itemDiv.addEventListener('click', (e) => {
+                    if (isLongPress) {
+                        e.preventDefault();
+                    }
+                });
             });
         };
 
