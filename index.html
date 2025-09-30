@@ -86,6 +86,11 @@
                     <input id="excel-file" type="file" class="hidden" accept=".xlsx, .xls" />
                 </label>
             </div>
+            <div class="text-center mt-4">
+                <button id="test-button" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    Bouton Test
+                </button>
+            </div>
             <p id="file-name" class="text-center mt-4 text-sm text-gray-500"></p>
             <!-- Barre de chargement -->
             <div id="loading-spinner" class="hidden flex justify-center items-center mt-4 text-blue-600">
@@ -186,6 +191,7 @@
     </div>
 
     <script>
+        const testButton = document.getElementById('test-button');
         const fileInput = document.getElementById('excel-file');
         const fileNameDisplay = document.getElementById('file-name');
         const uploadSection = document.getElementById('upload-section');
@@ -225,6 +231,17 @@
             INTERVENANT: 'Intervenant', SOURCE: 'Source', DATE_FAIT: 'Date fait'
         };
 
+        function processWorkbook(workbook) {
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            fullData = XLSX.utils.sheet_to_json(worksheet);
+            populateFilters();
+            applyFilters();
+            uploadSection.classList.add('hidden');
+            dashboardSection.classList.remove('hidden');
+            displayTabContent('qualite');
+        }
+
         fileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
@@ -236,14 +253,7 @@
                         try {
                             const data = new Uint8Array(e.target.result);
                             const workbook = XLSX.read(data, { type: 'array' });
-                            const firstSheetName = workbook.SheetNames[0];
-                            const worksheet = workbook.Sheets[firstSheetName];
-                            fullData = XLSX.utils.sheet_to_json(worksheet);
-                            populateFilters();
-                            applyFilters();
-                            uploadSection.classList.add('hidden');
-                            dashboardSection.classList.remove('hidden');
-                            displayTabContent('qualite');
+                            processWorkbook(workbook);
                         } catch (error) {
                             console.error('Erreur de traitement du fichier Excel:', error);
                             alert("Impossible de lire le fichier. Assurez-vous qu'il s'agit d'un fichier Excel valide et non corrompu.");
@@ -254,6 +264,38 @@
                     reader.readAsArrayBuffer(file);
                 }, 100);
             }
+        });
+
+        testButton.addEventListener('click', () => {
+            const testFile = 'netsoins_historique_des_signatures_2025_09_29_14_29_27.xlsx';
+            fileNameDisplay.textContent = `Fichier de test chargé : ${testFile}`;
+            loadingSpinner.classList.remove('hidden');
+
+            setTimeout(() => {
+                fetch(testFile)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.arrayBuffer();
+                    })
+                    .then(data => {
+                        try {
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            processWorkbook(workbook);
+                        } catch (error) {
+                            console.error('Erreur de traitement du fichier Excel de test:', error);
+                            alert("Impossible de lire le fichier de test. Assurez-vous qu'il est présent et valide.");
+                        } finally {
+                            loadingSpinner.classList.add('hidden');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur de chargement du fichier de test:', error);
+                        alert("Impossible de charger le fichier de test. Vérifiez la console pour plus de détails.");
+                        loadingSpinner.classList.add('hidden');
+                    });
+            }, 100);
         });
 
         tabs.forEach(tab => {
