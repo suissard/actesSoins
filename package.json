@@ -1,0 +1,25 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "Mise en valeur des donnée d'actes de soin de Netsoin",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suissard/actesSoins.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/suissard/actesSoins/issues"
+  },
+  "homepage": "https://github.com/suissard/actesSoins#readme",
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "xlsx": "^0.18.5"
+  }
+}
