@@ -1,3 +1,22 @@
+// analysis.js
+
+/**
+ * Contexte de l'analyse, contenant les données, les filtres et les noms de colonnes.
+ * @type {{fullData: Array<Object>, filteredData: Array<Object>, columnNames: {RESIDENT: string, SOIN: string, ETAT: string, INTERVENANT: string, SOURCE: string, DATE_FAIT: string}}}
+ */
+export const context = {
+    fullData: [],
+    filteredData: [],
+    columnNames: {
+        RESIDENT: 'Résident',
+        SOIN: 'Information',
+        ETAT: 'État',
+        INTERVENANT: 'Intervenant',
+        SOURCE: 'Source',
+        DATE_FAIT: 'Date fait'
+    }
+};
+
 /**
  * Nettoie le nom d'un résident ou d'un intervenant en supprimant les parenthèses et les mentions "Née".
  * @param {string} name - Le nom à nettoyer.
@@ -19,7 +38,6 @@ export function getStatusColor(etat) {
     if (etatLower.includes('absent')) return '#f97316';
     if (etatLower.includes('non nécessaire')) return '#6b7280';
     if (etatLower.includes('report')) return '#eab308';
-    // Pour les autres statuts, utilise une palette de couleurs déterministe
     const palette = ['#8b5cf6', '#ec4899', '#10b981', '#3b82f6'];
     let hash = 0;
     if (!etat) return palette[0];
@@ -29,47 +47,38 @@ export function getStatusColor(etat) {
     return palette[Math.abs(hash) % palette.length];
 }
 
-export const COLUMNS = {
-    RESIDENT: 'Résident', SOIN: 'Information', ETAT: 'État',
-    INTERVENANT: 'Intervenant', SOURCE: 'Source', DATE_FAIT: 'Date fait'
-};
-
 /**
  * Calcule les statistiques pour l'onglet "Qualité des Soins".
- * @param {Array<Object>} data - Les données filtrées.
  * @returns {{labels: string[], data: number[], backgroundColors: string[], list: [string, number][]}}
  */
-export function getQualiteStats(data) {
-    const statusCounts = data.reduce((acc, row) => {
-        const etat = row[COLUMNS.ETAT] || 'Non défini';
+export function getQualiteStats() {
+    const statusCounts = context.filteredData.reduce((acc, row) => {
+        const etat = row[context.columnNames.ETAT] || 'Non défini';
         acc[etat] = (acc[etat] || 0) + 1;
         return acc;
     }, {});
 
     const sortedStatuses = Object.entries(statusCounts).sort((a, b) => b[1] - a[1]);
-    const labels = sortedStatuses.map(item => item[0]);
-    const chartData = sortedStatuses.map(item => item[1]);
-    const backgroundColors = labels.map(label => getStatusColor(label));
 
     return {
-        labels,
-        data: chartData,
-        backgroundColors,
+        labels: sortedStatuses.map(item => item[0]),
+        data: sortedStatuses.map(item => item[1]),
+        backgroundColors: sortedStatuses.map(item => getStatusColor(item[0])),
         list: sortedStatuses
     };
 }
 
 /**
  * Calcule les statistiques pour l'onglet "Analyse Intervenants".
- * @param {Array<Object>} data - Les données filtrées.
  * @returns {Object} Un objet contenant les données pour le graphique et les informations annexes.
  */
-export function getIntervenantStats(data) {
-    const allEtats = [...new Set(data.map(row => row[COLUMNS.ETAT] || 'Non défini'))].sort();
+export function getIntervenantStats() {
+    const data = context.filteredData;
+    const allEtats = [...new Set(data.map(row => row[context.columnNames.ETAT] || 'Non défini'))].sort();
 
     const statsParIntervenant = data.reduce((acc, row) => {
-        const intervenant = cleanName(row[COLUMNS.INTERVENANT]);
-        const etat = row[COLUMNS.ETAT] || 'Non défini';
+        const intervenant = cleanName(row[context.columnNames.INTERVENANT]);
+        const etat = row[context.columnNames.ETAT] || 'Non défini';
         if (!acc[intervenant]) {
             acc[intervenant] = { total: 0 };
             allEtats.forEach(e => acc[intervenant][e] = 0);
@@ -83,57 +92,47 @@ export function getIntervenantStats(data) {
         return statsParIntervenant[b].total - statsParIntervenant[a].total;
     });
 
-    const datasets = allEtats.map(etat => {
-        return {
-            label: etat,
-            data: intervenantsSorted.map(intervenant => statsParIntervenant[intervenant][etat] || 0),
-            backgroundColor: getStatusColor(etat)
-        };
-    });
-
-    const soinsRefuses = data.filter(row => row[COLUMNS.ETAT] && String(row[COLUMNS.ETAT]).toLowerCase().includes('refus')).reduce((acc, row) => {
-        const soin = row[COLUMNS.SOIN] || 'Soin non spécifié';
+    const soinsRefuses = data.filter(row => row[context.columnNames.ETAT] && String(row[context.columnNames.ETAT]).toLowerCase().includes('refus')).reduce((acc, row) => {
+        const soin = row[context.columnNames.SOIN] || 'Soin non spécifié';
         acc[soin] = (acc[soin] || 0) + 1;
         return acc;
     }, {});
-    const sortedSoinsRefuses = Object.entries(soinsRefuses).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-    const tableData = {
-        headers: ['Intervenant', ...allEtats, 'Total'],
-        rows: intervenantsSorted.map(intervenant => {
-            const rowData = { 'Intervenant': intervenant };
-            let total = 0;
-            allEtats.forEach(etat => {
-                const count = statsParIntervenant[intervenant][etat] || 0;
-                rowData[etat] = count;
-                total += count;
-            });
-            rowData['Total'] = total;
-            return rowData;
-        })
-    };
 
     return {
         chart: {
             labels: intervenantsSorted,
-            datasets: datasets
+            datasets: allEtats.map(etat => ({
+                label: etat,
+                data: intervenantsSorted.map(intervenant => statsParIntervenant[intervenant][etat] || 0),
+                backgroundColor: getStatusColor(etat)
+            }))
         },
-        sideList: sortedSoinsRefuses,
-        table: tableData
+        sideList: Object.entries(soinsRefuses).sort((a, b) => b[1] - a[1]).slice(0, 5),
+        table: {
+            headers: ['Intervenant', ...allEtats, 'Total'],
+            rows: intervenantsSorted.map(intervenant => {
+                const rowData = { 'Intervenant': intervenant };
+                allEtats.forEach(etat => {
+                    rowData[etat] = statsParIntervenant[intervenant][etat] || 0;
+                });
+                rowData['Total'] = statsParIntervenant[intervenant].total;
+                return rowData;
+            })
+        }
     };
 }
 
 /**
  * Calcule les statistiques pour l'onglet "Suivi Résidents".
- * @param {Array<Object>} data - Les données filtrées.
  * @returns {Object} Un objet contenant les données pour le graphique et les informations annexes.
  */
-export function getResidentStats(data) {
+export function getResidentStats() {
+    const data = context.filteredData;
     const nonFaitsParResident = data
-        .filter(row => row[COLUMNS.ETAT] && String(row[COLUMNS.ETAT]).toLowerCase() !== 'fait')
+        .filter(row => row[context.columnNames.ETAT] && String(row[context.columnNames.ETAT]).toLowerCase() !== 'fait')
         .reduce((acc, row) => {
-            const resident = cleanName(row[COLUMNS.RESIDENT]);
-            const etat = row[COLUMNS.ETAT] || 'Non défini';
+            const resident = cleanName(row[context.columnNames.RESIDENT]);
+            const etat = row[context.columnNames.ETAT] || 'Non défini';
             if (!acc[resident]) {
                 acc[resident] = {};
             }
@@ -142,7 +141,7 @@ export function getResidentStats(data) {
         }, {});
 
     const allNonFaitEtats = [...new Set(data
-        .map(row => row[COLUMNS.ETAT] || 'Non défini')
+        .map(row => row[context.columnNames.ETAT] || 'Non défini')
         .filter(etat => etat.toLowerCase() !== 'fait')
     )].sort();
 
@@ -152,53 +151,44 @@ export function getResidentStats(data) {
         return totalB - totalA;
     });
 
-    const datasets = allNonFaitEtats.map(etat => {
-        return {
-            label: etat,
-            data: residentsSorted.map(resident => nonFaitsParResident[resident][etat] || 0),
-            backgroundColor: getStatusColor(etat)
-        };
-    });
-
-    const totalNonFaitsList = residentsSorted.map(resident => {
-        const total = Object.values(nonFaitsParResident[resident]).reduce((sum, count) => sum + count, 0);
-        return [resident, total];
-    }).slice(0, 5);
-
     return {
         chart: {
             labels: residentsSorted,
-            datasets: datasets
+            datasets: allNonFaitEtats.map(etat => ({
+                label: etat,
+                data: residentsSorted.map(resident => nonFaitsParResident[resident][etat] || 0),
+                backgroundColor: getStatusColor(etat)
+            }))
         },
-        sideList: totalNonFaitsList
+        sideList: residentsSorted.map(resident => {
+            const total = Object.values(nonFaitsParResident[resident]).reduce((sum, count) => sum + count, 0);
+            return [resident, total];
+        }).slice(0, 5)
     };
 }
 
 /**
  * Calcule les statistiques pour l'onglet "Opérationnel".
- * @param {Array<Object>} data - Les données filtrées.
  * @returns {Object} Un objet contenant les données pour le graphique et les informations annexes.
  */
-export function getOperationnelStats(data) {
-    const usageParIntervenant = data.reduce((acc, row) => {
-        const intervenant = cleanName(row[COLUMNS.INTERVENANT]);
+export function getOperationnelStats() {
+    const usageParIntervenant = context.filteredData.reduce((acc, row) => {
+        const intervenant = cleanName(row[context.columnNames.INTERVENANT]);
         if (!acc[intervenant]) {
             acc[intervenant] = { total: 0, tablette: 0 };
         }
         acc[intervenant].total++;
-        let source = row[COLUMNS.SOURCE] || 'Non défini';
+        let source = row[context.columnNames.SOURCE] || 'Non défini';
         if (String(source).toLowerCase().includes('tablette')) {
             acc[intervenant].tablette++;
         }
         return acc;
     }, {});
 
-    const classement = Object.entries(usageParIntervenant).map(([intervenant, stats]) => {
-        const percentage = stats.total > 0 ? (stats.tablette / stats.total) * 100 : 0;
-        return { intervenant, percentage };
-    }).sort((a, b) => b.percentage - a.percentage);
-
-    const top5 = classement.slice(0, 5).map(item => [item.intervenant, item.percentage]);
+    const classement = Object.entries(usageParIntervenant).map(([intervenant, stats]) => ({
+        intervenant,
+        percentage: stats.total > 0 ? (stats.tablette / stats.total) * 100 : 0
+    })).sort((a, b) => b.percentage - a.percentage);
 
     return {
         chart: {
@@ -209,6 +199,29 @@ export function getOperationnelStats(data) {
                 backgroundColor: '#10b981'
             }]
         },
-        sideList: top5
+        sideList: classement.slice(0, 5).map(item => [item.intervenant, item.percentage])
     };
+}
+
+/**
+ * Initialise le contexte de l'analyse, détecte les noms de colonnes et stocke les données.
+ * @param {Array<Object>} rawData - Les données brutes du fichier Excel.
+ */
+export function initializeAnalysis(rawData) {
+    context.fullData = rawData;
+    context.filteredData = rawData;
+
+    const headers = rawData.length > 0 ? Object.keys(rawData[0]) : [];
+
+    // Détection dynamique de la colonne Résident
+    const residentAliases = ['résident', 'résidents', 'beneficiaire', 'bénéficiaire', 'patient', 'patient/résident'];
+    const residentHeader = headers.find(h => residentAliases.includes(h.trim().toLowerCase()));
+
+    if (residentHeader) {
+        context.columnNames.RESIDENT = residentHeader;
+        console.log(`Colonne Résident détectée : "${residentHeader}"`);
+    } else {
+        console.warn("Impossible de trouver la colonne des résidents. Utilisation de la valeur par défaut : 'Résident'");
+        // On garde la valeur par défaut au cas où
+    }
 }
