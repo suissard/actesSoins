@@ -6,7 +6,11 @@ export default defineConfig({
     // instead of trying to use a pre-bundled version. This is often
     // necessary for packages with mixed CJS/ESM exports.
     deps: {
-      inline: ['xlsx'],
+        optimizer: {
+            ssr: {
+                include: ['xlsx'],
+            },
+        },
     },
     // Ensure the test environment is explicitly set to Node.js
     environment: 'node',
