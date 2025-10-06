@@ -8,22 +8,69 @@ import {
     getQualiteStats,
     getIntervenantStats,
     getResidentStats,
-    getOperationnelStats
+    getOperationnelStats,
+    parseDate,
+    getMinMaxDates
 } from './analysis.js';
-import * as XLSX from 'xlsx';
 
-// Helper function to read the Excel file for tests
-const readTestData = () => {
-    try {
-        const workbook = XLSX.readFile('netsoins_historique_des_signatures_2025_09_29_14_29_27.xlsx');
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        return XLSX.utils.sheet_to_json(worksheet);
-    } catch (error) {
-        console.error("Failed to read test data. Make sure the Excel file exists and is not corrupted.", error);
-        return [];
-    }
-};
+// Mock data to replace reading from the Excel file
+const mockData = [{
+    'Résident': 'Mme. Dupont',
+    'Information': 'Toilette',
+    'État': 'Fait',
+    'Intervenant': 'IDE-1',
+    'Source': 'Tablette',
+    'Date fait': 45291 // 2024-01-01 in Excel serial date format
+}, {
+    'Résident': 'M. Martin',
+    'Information': 'Prise de tension',
+    'État': 'Refus du résident',
+    'Intervenant': 'AS-2',
+    'Source': 'PC',
+    'Date fait': 45292
+}, {
+    'Résident': 'Mme. Dupont',
+    'Information': 'Aide au repas',
+    'État': 'Fait',
+    'Intervenant': 'IDE-1',
+    'Source': 'Tablette',
+    'Date fait': "2024-01-02" // String date format
+}, {
+    'Résident': 'M. Bernard',
+    'Information': 'Change',
+    'État': 'Absent(e)',
+    'Intervenant': 'AS-2',
+    'Source': 'PC',
+    'Date fait': 45293
+}, {
+    'Résident': 'M. Martin',
+    'Information': 'Distribution médicaments',
+    'État': 'Fait',
+    'Intervenant': 'IDE-1',
+    'Source': 'Tablette',
+    'Date fait': 45293
+}, {
+    'Résident': 'Mme. Petit',
+    'Information': 'Lever',
+    'État': 'Non nécessaire',
+    'Intervenant': 'AS-3',
+    'Source': 'PC',
+    'Date fait': 45294
+}, {
+    'Bénéficiaire': 'M. Test', // To test alternative column name
+    'Information': 'Test Soin',
+    'État': 'Reporté',
+    'Intervenant': 'IDE-2',
+    'Source': 'Tablette',
+    'Date fait': 45295
+}, {
+    'Résident': 'M. Martin (Test)',
+    'Information': 'Soins des pieds',
+    'État': 'Fait',
+    'Intervenant': 'IDE-1 Née Autre',
+    'Source': 'PC',
+    'Date fait': "2024-01-06"
+}];
 
 describe('Utility Functions', () => {
     describe('cleanName', () => {
@@ -71,93 +118,97 @@ describe('Utility Functions', () => {
     });
 });
 
+describe('Date Functions', () => {
+    beforeAll(() => {
+        // We need to initialize the context with our mock data to test date functions
+        initializeAnalysis(JSON.parse(JSON.stringify(mockData)));
+    });
+
+    describe('parseDate', () => {
+        it('should correctly parse an Excel serial number date', () => {
+            const date = parseDate(45291); // Corresponds to 2024-01-01
+            expect(date).toBeInstanceOf(Date);
+            expect(date.getUTCFullYear()).toBe(2024);
+            expect(date.getUTCMonth()).toBe(0); // January
+            expect(date.getUTCDate()).toBe(1);
+        });
+
+        it('should correctly parse a date string', () => {
+            const date = parseDate("2024-01-02");
+            expect(date).toBeInstanceOf(Date);
+            expect(date.getUTCFullYear()).toBe(2024);
+            expect(date.getUTCMonth()).toBe(0);
+            expect(date.getUTCDate()).toBe(2);
+        });
+
+        it('should return null for invalid date values', () => {
+            expect(parseDate(null)).toBeNull();
+            expect(parseDate(undefined)).toBeNull();
+            expect(parseDate('not a date')).toBeNull();
+        });
+    });
+
+    describe('getMinMaxDates', () => {
+        it('should return the correct min and max dates from the dataset', () => {
+            const { min, max } = getMinMaxDates();
+            expect(min.toISOString().split('T')[0]).toBe('2024-01-01');
+            expect(max.toISOString().split('T')[0]).toBe('2024-01-06');
+        });
+    });
+});
+
+
 describe('Data Analysis Functions', () => {
     beforeAll(() => {
-        const testData = readTestData();
-        initializeAnalysis(testData);
+        // Use a deep copy of mockData to prevent tests from interfering with each other
+        initializeAnalysis(JSON.parse(JSON.stringify(mockData)));
     });
 
     it('should load and initialize test data without errors', () => {
-        expect(context.fullData.length).toBeGreaterThan(0);
-        expect(context.filteredData.length).toBeGreaterThan(0);
+        expect(context.fullData.length).toBe(8);
+        expect(context.filteredData.length).toBe(8);
     });
 
-    it('getQualiteStats should return a valid structure and correct total', () => {
+    it('getQualiteStats should return a valid structure and correct counts', () => {
         const stats = getQualiteStats();
-        expect(stats).toHaveProperty('labels');
-        expect(stats).toHaveProperty('data');
-        expect(stats.labels.length).toBe(stats.data.length);
-
-        const totalFromData = context.fullData.length;
-        const totalFromStats = stats.data.reduce((sum, val) => sum + val, 0);
-        expect(totalFromStats).toBe(totalFromData);
-
-        const faitIndex = stats.labels.indexOf('Fait');
-        expect(faitIndex).not.toBe(-1);
-        expect(stats.data[faitIndex]).toBeGreaterThan(0);
+        expect(stats.labels).toEqual(['Fait', 'Refus du résident', 'Absent(e)', 'Non nécessaire', 'Reporté']);
+        expect(stats.data).toEqual([4, 1, 1, 1, 1]);
     });
 
     it('getIntervenantStats should return a valid structure and plausible data', () => {
         const stats = getIntervenantStats();
-        expect(stats).toHaveProperty('chart');
-        expect(stats).toHaveProperty('sideList');
-        expect(stats).toHaveProperty('table');
-        expect(stats.chart.labels.length).toBeGreaterThan(0);
+        expect(stats.chart.labels).toEqual(['IDE-1', 'AS-2', 'AS-3', 'IDE-2']);
+        expect(stats.table.rows.length).toBe(4);
 
-        // Instead of a hardcoded name, let's check the first (and therefore most active) intervenant
-        const topIntervenantName = stats.chart.labels[0];
-        const topIntervenantData = stats.table.rows.find(r => r.Intervenant === topIntervenantName);
-
-        expect(topIntervenantData).toBeDefined();
-        const statusColumns = stats.table.headers.filter(h => h !== 'Intervenant' && h !== 'Total');
-        const calculatedTotal = statusColumns.reduce((sum, col) => sum + (topIntervenantData[col] || 0), 0);
-        expect(topIntervenantData.Total).toBe(calculatedTotal);
+        const ide1Data = stats.table.rows.find(r => r.Intervenant === 'IDE-1');
+        expect(ide1Data.Total).toBe(4);
+        expect(ide1Data.Fait).toBe(4);
     });
 
     it('getResidentStats should correctly identify residents with non-fait statuses', () => {
         const stats = getResidentStats();
-        expect(stats).toHaveProperty('chart');
+        expect(stats.chart.labels).toEqual(['M. Martin', 'M. Bernard', 'Mme. Petit', 'M. Test']);
 
-        // Check that there is at least one resident with non-fait acts if such acts exist in the data
         const refusDataset = stats.chart.datasets.find(d => d.label === 'Refus du résident');
-        if (refusDataset) {
-            expect(stats.chart.labels.length).toBeGreaterThan(0);
-            const totalRefusals = refusDataset.data.reduce((sum, val) => sum + val, 0);
-            expect(totalRefusals).toBeGreaterThan(0);
-        } else {
-            // If there are no refusals in the test data, the test shouldn't fail.
-            // We can just check that the structure is correct.
-            expect(stats.chart.datasets).toBeInstanceOf(Array);
-        }
+        expect(refusDataset).toBeDefined();
+        // M. Martin is the first label and should have 1 refusal.
+        const martinIndex = stats.chart.labels.indexOf('M. Martin');
+        expect(refusDataset.data[martinIndex]).toBe(1);
     });
 
     it('getOperationnelStats should correctly calculate tablet usage percentage', () => {
         const stats = getOperationnelStats();
-        expect(stats).toHaveProperty('chart');
-        expect(stats.chart.labels.length).toBeGreaterThan(0);
-        expect(stats.chart.datasets[0].data.length).toBe(stats.chart.labels.length);
-
-        // Check that all percentages are valid numbers between 0 and 100
-        stats.chart.datasets[0].data.forEach(percentage => {
-            const p = parseFloat(percentage);
-            expect(p).toBeGreaterThanOrEqual(0);
-            expect(p).toBeLessThanOrEqual(100);
-        });
+        // IDE-1: 3/4 = 75%, IDE-2: 1/1 = 100%, AS-2: 0/2 = 0%, AS-3: 0/1 = 0%
+        // Sorted order: IDE-2, IDE-1, AS-2, AS-3
+        expect(stats.chart.labels).toEqual(['IDE-2', 'IDE-1', 'AS-2', 'AS-3']);
+        expect(stats.chart.datasets[0].data).toEqual(['100.0', '75.0', '0.0', '0.0']);
     });
 
-    it('initializeAnalysis should detect alternative resident column names without polluting state', () => {
-        // Save the original context to avoid affecting other tests
-        const originalFullData = context.fullData;
-        const originalFilteredData = context.filteredData;
-        const originalColumnNames = { ...context.columnNames };
-
-        const mockData = [{ 'Bénéficiaire': 'Mme. Test', 'État': 'Fait' }];
-        initializeAnalysis(mockData);
-        expect(context.columnNames.RESIDENT).toBe('Bénéficiaire');
-
-        // Restore the original context
-        context.fullData = originalFullData;
-        context.filteredData = originalFilteredData;
-        context.columnNames = originalColumnNames;
+    it('initializeAnalysis should detect alternative resident column names', () => {
+        // The mock data is already initialized in beforeAll, let's check the result
+        const testResident = context.fullData.find(row => row[context.columnNames.SOIN] === 'Test Soin');
+        expect(testResident).toBeDefined();
+        // The name should be cleaned and accessible via the detected column name.
+        expect(cleanName(testResident[context.columnNames.RESIDENT])).toBe('M. Test');
     });
 });

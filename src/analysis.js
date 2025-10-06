@@ -207,21 +207,100 @@ export function getOperationnelStats() {
  * Initialise le contexte de l'analyse, détecte les noms de colonnes et stocke les données.
  * @param {Array<Object>} rawData - Les données brutes du fichier Excel.
  */
+/**
+ * Tente de parser une date. Gère les numéros de série Excel et les chaînes de date.
+ * @param {*} dateValue - La valeur à parser.
+ * @returns {Date|null} Un objet Date ou null si invalide.
+ */
+export function parseDate(dateValue) {
+    if (dateValue === null || dateValue === undefined) {
+        return null;
+    }
+
+    // Si c'est un nombre (potentiellement un numéro de série Excel)
+    if (typeof dateValue === 'number') {
+        // Formule de conversion du numéro de série Excel en timestamp JS
+        // Le jour de base d'Excel est 1900-01-01, mais Excel a un bug où il considère 1900 comme une année bissextile.
+        // On soustrait 25569 pour convertir le jour Excel en jour Unix et on multiplie par le nombre de millisecondes par jour.
+        const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+        const jsDate = new Date(excelEpoch.getTime() + dateValue * 86400000);
+
+        // Vérification de validité
+        if (!isNaN(jsDate.getTime())) {
+            return jsDate;
+        }
+    }
+
+    // Si c'est une chaîne, on essaie de la parser directement
+    if (typeof dateValue === 'string') {
+        const jsDate = new Date(dateValue);
+        if (!isNaN(jsDate.getTime())) {
+            return jsDate;
+        }
+    }
+
+    // Si c'est déjà un objet Date
+    if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+        return dateValue;
+    }
+
+    console.warn(`Format de date non reconnu :`, dateValue);
+    return null;
+}
+
+/**
+ * Retourne les dates min et max du jeu de données filtré.
+ * @returns {{min: Date, max: Date}}
+ */
+export function getMinMaxDates() {
+    if (!context.fullData || context.fullData.length === 0) {
+        return { min: new Date(), max: new Date() };
+    }
+
+    const dates = context.fullData
+        .map(row => row[context.columnNames.DATE_FAIT])
+        .filter(date => date instanceof Date); // On ne garde que les dates valides
+
+    if (dates.length === 0) {
+        return { min: new Date(), max: new Date() };
+    }
+
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+
+    return { min: minDate, max: maxDate };
+}
+
+
+/**
+ * Initialise le contexte de l'analyse, détecte les noms de colonnes et stocke les données.
+ * @param {Array<Object>} rawData - Les données brutes du fichier Excel.
+ */
 export function initializeAnalysis(rawData) {
-    context.fullData = rawData;
-    context.filteredData = rawData;
 
     const headers = rawData.length > 0 ? Object.keys(rawData[0]) : [];
 
-    // Détection dynamique de la colonne Résident
-    const residentAliases = ['résident', 'résidents', 'beneficiaire', 'bénéficiaire', 'patient', 'patient/résident'];
-    const residentHeader = headers.find(h => residentAliases.includes(h.trim().toLowerCase()));
+    // --- Détection dynamique des colonnes ---
+    const findHeader = (aliases) => {
+        const lowerCaseAliases = aliases.map(a => a.toLowerCase());
+        return headers.find(h => lowerCaseAliases.includes(h.trim().toLowerCase()));
+    };
 
-    if (residentHeader) {
-        context.columnNames.RESIDENT = residentHeader;
-        console.log(`Colonne Résident détectée : "${residentHeader}"`);
-    } else {
-        console.warn("Impossible de trouver la colonne des résidents. Utilisation de la valeur par défaut : 'Résident'");
-        // On garde la valeur par défaut au cas où
-    }
+    const residentHeader = findHeader(['résident', 'résidents', 'beneficiaire', 'bénéficiaire', 'patient', 'patient/résident']);
+    const dateFaitHeader = findHeader(['date fait', 'date_fait', 'date']);
+
+    if (residentHeader) context.columnNames.RESIDENT = residentHeader;
+    if (dateFaitHeader) context.columnNames.DATE_FAIT = dateFaitHeader;
+
+    console.log(`Colonne Résident: "${context.columnNames.RESIDENT}", Colonne Date: "${context.columnNames.DATE_FAIT}"`);
+
+    // --- Traitement et nettoyage des données ---
+    context.fullData = rawData.map(row => {
+        const dateFaitValue = row[context.columnNames.DATE_FAIT];
+        // On remplace la date originale par un objet Date JS
+        row[context.columnNames.DATE_FAIT] = parseDate(dateFaitValue);
+        return row;
+    });
+
+    context.filteredData = [...context.fullData];
 }

@@ -123,6 +123,24 @@
                         </button>
                     </div>
                     <div id="filters-content" class="space-y-4 hidden">
+                        <!-- Filtre par Date -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Par date</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <input type="date" id="start-date-filter" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                <input type="date" id="end-date-filter" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <!-- Options de Tri -->
+                        <div>
+                            <label for="sort-order" class="block text-sm font-medium text-gray-700 mb-1">Trier par</label>
+                            <select id="sort-order" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                <option value="date-desc">Date (plus récent d'abord)</option>
+                                <option value="date-asc">Date (plus ancien d'abord)</option>
+                            </select>
+                        </div>
+
                         <!-- Filtre Résident -->
                         <div>
                             <div class="flex justify-between items-center mb-1">
@@ -198,7 +216,8 @@
             getQualiteStats,
             getIntervenantStats,
             getResidentStats,
-            getOperationnelStats
+            getOperationnelStats,
+            getMinMaxDates
         } from './src/analysis.js';
 
         const testButton = document.getElementById('test-button');
@@ -229,6 +248,10 @@
         const soinFilterList = document.getElementById('soin-filter-list');
         const etatSearch = document.getElementById('etat-search');
         const etatFilterList = document.getElementById('etat-filter-list');
+
+        const startDateFilter = document.getElementById('start-date-filter');
+        const endDateFilter = document.getElementById('end-date-filter');
+        const sortOrder = document.getElementById('sort-order');
 
         let chartInstance = null;
         let isFiltersVisible = false;
@@ -418,10 +441,41 @@
             createFilterCheckboxes(intervenantFilterList, intervenants, 'intervenant');
             createFilterCheckboxes(soinFilterList, soins, 'soin');
             createFilterCheckboxes(etatFilterList, etats, 'etat');
+
+            populateDateFilters();
         }
+
+        function populateDateFilters() {
+            const { min, max } = getMinMaxDates();
+
+            const toISODateString = (date) => {
+                if (!(date instanceof Date) || isNaN(date)) return '';
+                // Pour éviter les problèmes de fuseau horaire, on utilise les méthodes UTC
+                const year = date.getUTCFullYear();
+                const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(date.getUTCDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            const minDateStr = toISODateString(min);
+            const maxDateStr = toISODateString(max);
+
+            startDateFilter.min = minDateStr;
+            startDateFilter.max = maxDateStr;
+            startDateFilter.value = minDateStr;
+
+            endDateFilter.min = minDateStr;
+            endDateFilter.max = maxDateStr;
+            endDateFilter.value = maxDateStr;
+        }
+
 
         [residentFilterList, intervenantFilterList, soinFilterList, etatFilterList].forEach(list => {
             list.addEventListener('change', applyFilters);
+        });
+
+        [startDateFilter, endDateFilter, sortOrder].forEach(element => {
+            element.addEventListener('change', applyFilters);
         });
 
         const addSearchListener = (searchInput, filterList) => {
@@ -440,20 +494,69 @@
 
         function applyFilters() {
             const getSelected = (list) => Array.from(list.querySelectorAll('input:checked')).map(cb => cb.value);
-            
+
             const selectedResidents = getSelected(residentFilterList);
             const selectedIntervenants = getSelected(intervenantFilterList);
             const selectedSoins = getSelected(soinFilterList);
             const selectedEtats = getSelected(etatFilterList);
+
+            // --- Logique de filtrage par date ---
+            // On récupère les valeurs des dates et on les convertit en objets Date.
+            // On ajoute ou soustrait les décalages de fuseau horaire pour comparer en UTC.
+            const startDateValue = startDateFilter.valueAsDate;
+            const endDateValue = endDateFilter.valueAsDate;
+
+            let startDate = null;
+            if (startDateValue) {
+                startDate = new Date(startDateValue.getTime() + startDateValue.getTimezoneOffset() * 60000);
+                startDate.setUTCHours(0, 0, 0, 0); // Début de journée
+            }
+
+            let endDate = null;
+            if (endDateValue) {
+                endDate = new Date(endDateValue.getTime() + endDateValue.getTimezoneOffset() * 60000);
+                endDate.setUTCHours(23, 59, 59, 999); // Fin de journée
+            }
             
-            context.filteredData = context.fullData.filter(row => {
+            let dataToFilter = [...context.fullData];
+
+            // --- Application des filtres ---
+            context.filteredData = dataToFilter.filter(row => {
                 const residentMatch = selectedResidents.includes(cleanName(row[context.columnNames.RESIDENT]));
                 const intervenantMatch = selectedIntervenants.includes(cleanName(row[context.columnNames.INTERVENANT]));
                 const soinMatch = selectedSoins.includes(row[context.columnNames.SOIN] || 'Non spécifié');
                 const etatMatch = selectedEtats.includes(row[context.columnNames.ETAT] || 'Non défini');
-                return residentMatch && intervenantMatch && soinMatch && etatMatch;
+
+                const rowDate = row[context.columnNames.DATE_FAIT];
+                let dateMatch = true;
+                if (rowDate instanceof Date) {
+                    if (startDate && rowDate < startDate) dateMatch = false;
+                    if (endDate && rowDate > endDate) dateMatch = false;
+                } else {
+                    // Si une date de la ligne est invalide, on ne la garde que si aucun filtre de date n'est actif
+                    dateMatch = !startDate && !endDate;
+                }
+
+                return residentMatch && intervenantMatch && soinMatch && etatMatch && dateMatch;
             });
-            
+
+            // --- Logique de tri ---
+            const currentSortOrder = sortOrder.value;
+            context.filteredData.sort((a, b) => {
+                const dateA = a[context.columnNames.DATE_FAIT];
+                const dateB = b[context.columnNames.DATE_FAIT];
+
+                // Gérer les dates non valides en les plaçant à la fin
+                if (!(dateA instanceof Date)) return 1;
+                if (!(dateB instanceof Date)) return -1;
+
+                if (currentSortOrder === 'date-asc') {
+                    return dateA - dateB;
+                } else { // 'date-desc'
+                    return dateB - dateA;
+                }
+            });
+
             const activeTab = document.querySelector('.tab-button.active');
             if (activeTab) {
                 displayTabContent(activeTab.dataset.tab);
