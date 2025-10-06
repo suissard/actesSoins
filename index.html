@@ -110,6 +110,7 @@
                 <button data-tab="intervenants" class="tab-button py-3 px-4 font-medium text-gray-600 border-b-2 border-transparent hover:border-blue-500 hover:text-blue-600">Analyse Intervenants</button>
                 <button data-tab="residents" class="tab-button py-3 px-4 font-medium text-gray-600 border-b-2 border-transparent hover:border-blue-500 hover:text-blue-600">Suivi Résidents</button>
                 <button data-tab="operationnel" class="tab-button py-3 px-4 font-medium text-gray-600 border-b-2 border-transparent hover:border-blue-500 hover:text-blue-600">Opérationnel</button>
+                <button data-tab="suivi-journalier" class="tab-button py-3 px-4 font-medium text-gray-600 border-b-2 border-transparent hover:border-blue-500 hover:text-blue-600">Suivi Journalier</button>
             </nav>
 
             <!-- Contenu des onglets -->
@@ -198,7 +199,8 @@
             getQualiteStats,
             getIntervenantStats,
             getResidentStats,
-            getOperationnelStats
+            getOperationnelStats,
+            getSuiviJournalierStats
         } from './src/analysis.js';
 
         const testButton = document.getElementById('test-button');
@@ -500,6 +502,7 @@
                     break;
                 case 'residents': displayResidentStats(); break;
                 case 'operationnel': displayOperationnelStats(); break;
+                case 'suivi-journalier': displaySuiviJournalierStats(); break;
             }
         }
         
@@ -584,6 +587,36 @@
             sideInfoContent.innerHTML = createPercentageListHTML(stats.sideList);
         }
 
+        function displaySuiviJournalierStats() {
+            const stats = getSuiviJournalierStats();
+            renderChart('line', 'Évolution du nombre d\'actes par jour', {
+                labels: stats.labels,
+                datasets: [{
+                    label: 'Nombre d\'actes',
+                    data: stats.data,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.1
+                }]
+            });
+
+            sideInfoTitle.textContent = "Résumé Journalier";
+            const totalActes = stats.data.reduce((sum, value) => sum + value, 0);
+            const averageActes = totalActes / (stats.data.length || 1);
+            sideInfoContent.innerHTML = `
+                <ul class="space-y-3">
+                    <li class="flex justify-between items-center bg-white p-3 rounded-md shadow-sm">
+                        <span class="text-sm font-medium text-gray-700">Total des actes</span>
+                        <span class="text-sm font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded-full">${totalActes}</span>
+                    </li>
+                    <li class="flex justify-between items-center bg-white p-3 rounded-md shadow-sm">
+                        <span class="text-sm font-medium text-gray-700">Moyenne par jour</span>
+                        <span class="text-sm font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded-full">${averageActes.toFixed(1)}</span>
+                    </li>
+                </ul>`;
+        }
+
         function handleChartClick(type, label) {
             let filterList;
             switch (type) {
@@ -626,9 +659,9 @@
                         title: { display: true, text: title, font: { size: 18 }, padding: { top: 10, bottom: 20 } },
                         legend: { position: 'bottom' }
                     },
-                    scales: { 
-                        x: { display: type === 'bar', ticks: { autoSkip: false }, stacked: stacked }, 
-                        y: { display: type === 'bar', ticks: { autoSkip: false }, stacked: stacked } 
+                    scales: {
+                        x: { display: ['bar', 'line'].includes(type), ticks: { autoSkip: false }, stacked: stacked },
+                        y: { display: ['bar', 'line'].includes(type), ticks: { autoSkip: false }, stacked: stacked }
                     }
                 }
             });

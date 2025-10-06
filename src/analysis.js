@@ -204,6 +204,33 @@ export function getOperationnelStats() {
 }
 
 /**
+ * Calcule les statistiques pour l'onglet "Suivi Journalier".
+ * @returns {{labels: string[], data: number[]}}
+ */
+export function getSuiviJournalierStats() {
+    const actesParJour = context.filteredData.reduce((acc, row) => {
+        const dateFait = row[context.columnNames.DATE_FAIT];
+        if (dateFait) {
+            // Extrait la date au format YYYY-MM-DD
+            const date = new Date(dateFait);
+            const dateString = date.toISOString().split('T')[0];
+            acc[dateString] = (acc[dateString] || 0) + 1;
+        }
+        return acc;
+    }, {});
+
+    const sortedDates = Object.entries(actesParJour).sort((a, b) => new Date(a[0]) - new Date(b[0]));
+
+    return {
+        labels: sortedDates.map(item => {
+            const date = new Date(item[0]);
+            return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+        }),
+        data: sortedDates.map(item => item[1]),
+    };
+}
+
+/**
  * Initialise le contexte de l'analyse, détecte les noms de colonnes et stocke les données.
  * @param {Array<Object>} rawData - Les données brutes du fichier Excel.
  */
