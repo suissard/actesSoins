@@ -79,12 +79,27 @@ export function getIntervenantStats() {
     const statsParIntervenant = data.reduce((acc, row) => {
         const intervenant = cleanName(row[context.columnNames.INTERVENANT]);
         const etat = row[context.columnNames.ETAT] || 'Non défini';
+        const date = row[context.columnNames.DATE_FAIT];
+
         if (!acc[intervenant]) {
-            acc[intervenant] = { total: 0 };
+            acc[intervenant] = { total: 0, days: new Set() };
             allEtats.forEach(e => acc[intervenant][e] = 0);
         }
         acc[intervenant][etat] = (acc[intervenant][etat] || 0) + 1;
         acc[intervenant].total++;
+
+        if (date) {
+            let dayIdentifier;
+            if (typeof date === 'number') { // Gère les dates sérielles Excel
+                dayIdentifier = Math.floor(date);
+            } else if (typeof date === 'string') { // Gère les chaînes de date 'JJ/MM/AAAA...'
+                dayIdentifier = date.split(' ')[0];
+            }
+            if (dayIdentifier) {
+                acc[intervenant].days.add(dayIdentifier);
+            }
+        }
+
         return acc;
     }, {});
 
@@ -109,13 +124,21 @@ export function getIntervenantStats() {
         },
         sideList: Object.entries(soinsRefuses).sort((a, b) => b[1] - a[1]).slice(0, 5),
         table: {
-            headers: ['Intervenant', ...allEtats, 'Total'],
+            headers: ['Intervenant', ...allEtats, 'Total', 'Moyenne / jour'],
             rows: intervenantsSorted.map(intervenant => {
+                const stats = statsParIntervenant[intervenant];
                 const rowData = { 'Intervenant': intervenant };
+
                 allEtats.forEach(etat => {
-                    rowData[etat] = statsParIntervenant[intervenant][etat] || 0;
+                    rowData[etat] = stats[etat] || 0;
                 });
-                rowData['Total'] = statsParIntervenant[intervenant].total;
+
+                rowData['Total'] = stats.total;
+
+                const nbJours = stats.days.size;
+                const moyenne = nbJours > 0 ? (stats.total / nbJours) : 0;
+                rowData['Moyenne / jour'] = moyenne.toFixed(2);
+
                 return rowData;
             })
         }
@@ -128,9 +151,7 @@ export function getIntervenantStats() {
  */
 export function getResidentStats() {
     const data = context.filteredData;
-    const nonFaitsParResident = data
-        .filter(row => row[context.columnNames.ETAT] && String(row[context.columnNames.ETAT]).toLowerCase() !== 'fait')
-        .reduce((acc, row) => {
+    const statsParResident = data.reduce((acc, row) => {
             const resident = cleanName(row[context.columnNames.RESIDENT]);
             const etat = row[context.columnNames.ETAT] || 'Non défini';
             if (!acc[resident]) {
@@ -140,28 +161,27 @@ export function getResidentStats() {
             return acc;
         }, {});
 
-    const allNonFaitEtats = [...new Set(data
+    const allEtats = [...new Set(data
         .map(row => row[context.columnNames.ETAT] || 'Non défini')
-        .filter(etat => etat.toLowerCase() !== 'fait')
     )].sort();
 
-    const residentsSorted = Object.keys(nonFaitsParResident).sort((a, b) => {
-        const totalA = Object.values(nonFaitsParResident[a]).reduce((sum, count) => sum + count, 0);
-        const totalB = Object.values(nonFaitsParResident[b]).reduce((sum, count) => sum + count, 0);
+    const residentsSorted = Object.keys(statsParResident).sort((a, b) => {
+        const totalA = Object.values(statsParResident[a]).reduce((sum, count) => sum + count, 0);
+        const totalB = Object.values(statsParResident[b]).reduce((sum, count) => sum + count, 0);
         return totalB - totalA;
     });
 
     return {
         chart: {
             labels: residentsSorted,
-            datasets: allNonFaitEtats.map(etat => ({
+            datasets: allEtats.map(etat => ({
                 label: etat,
-                data: residentsSorted.map(resident => nonFaitsParResident[resident][etat] || 0),
+                data: residentsSorted.map(resident => statsParResident[resident][etat] || 0),
                 backgroundColor: getStatusColor(etat)
             }))
         },
         sideList: residentsSorted.map(resident => {
-            const total = Object.values(nonFaitsParResident[resident]).reduce((sum, count) => sum + count, 0);
+            const total = Object.values(statsParResident[resident]).reduce((sum, count) => sum + count, 0);
             return [resident, total];
         }).slice(0, 5)
     };
