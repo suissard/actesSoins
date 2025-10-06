@@ -570,9 +570,9 @@
 
         function displayResidentStats() {
             const stats = getResidentStats();
-            renderChart('bar', 'Actes non réalisés par résident (par type)', stats.chart, 'resident', 'y', true);
+            renderChart('bar', 'Répartition des actes par résident (par type)', stats.chart, 'resident', 'y', true);
 
-            sideInfoTitle.textContent = "Top 5 des résidents (actes non réalisés)";
+            sideInfoTitle.textContent = "Top 5 des résidents (total des actes)";
             sideInfoContent.innerHTML = createListHTML(stats.sideList);
         }
 

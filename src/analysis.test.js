@@ -10,20 +10,6 @@ import {
     getResidentStats,
     getOperationnelStats
 } from './analysis.js';
-import * as XLSX from 'xlsx';
-
-// Helper function to read the Excel file for tests
-const readTestData = () => {
-    try {
-        const workbook = XLSX.readFile('netsoins_historique_des_signatures_2025_09_29_14_29_27.xlsx');
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        return XLSX.utils.sheet_to_json(worksheet);
-    } catch (error) {
-        console.error("Failed to read test data. Make sure the Excel file exists and is not corrupted.", error);
-        return [];
-    }
-};
 
 describe('Utility Functions', () => {
     describe('cleanName', () => {
@@ -72,14 +58,24 @@ describe('Utility Functions', () => {
 });
 
 describe('Data Analysis Functions', () => {
+    const mockData = [
+        // Intervener 1: 3 acts on 2 days. Avg = 1.5
+        { 'Résident': 'Mme. Dupont', 'Information': 'Soin A', 'État': 'Fait', 'Intervenant': 'Infirmier 1', 'Source': 'Tablette', 'Date fait': '01/10/2025 10:00' },
+        { 'Résident': 'Mme. Dupont', 'Information': 'Soin C', 'État': 'Fait', 'Intervenant': 'Infirmier 1', 'Source': 'Tablette', 'Date fait': '01/10/2025 12:00' },
+        { 'Résident': 'M. Bernard', 'Information': 'Soin D', 'État': 'Absent(e)', 'Intervenant': 'Infirmier 1', 'Source': 'PC', 'Date fait': '02/10/2025 09:00' },
+        // Intervener 2: 1 act on 1 day. Avg = 1.0
+        { 'Résident': 'M. Martin', 'Information': 'Soin B', 'État': 'Refus du résident', 'Intervenant': 'Infirmier 2', 'Source': 'PC', 'Date fait': '01/10/2025 11:00' },
+        // Intervener 3: 1 act, no date. Avg = 0
+        { 'Résident': 'Mme. Test', 'Information': 'Soin E', 'État': 'Fait', 'Intervenant': 'Infirmier 3', 'Source': 'Tablette', 'Date fait': null },
+    ];
+
     beforeAll(() => {
-        const testData = readTestData();
-        initializeAnalysis(testData);
+        initializeAnalysis(mockData);
     });
 
     it('should load and initialize test data without errors', () => {
-        expect(context.fullData.length).toBeGreaterThan(0);
-        expect(context.filteredData.length).toBeGreaterThan(0);
+        expect(context.fullData.length).toBe(5);
+        expect(context.filteredData.length).toBe(5);
     });
 
     it('getQualiteStats should return a valid structure and correct total', () => {
@@ -88,71 +84,76 @@ describe('Data Analysis Functions', () => {
         expect(stats).toHaveProperty('data');
         expect(stats.labels.length).toBe(stats.data.length);
 
-        const totalFromData = context.fullData.length;
         const totalFromStats = stats.data.reduce((sum, val) => sum + val, 0);
-        expect(totalFromStats).toBe(totalFromData);
+        expect(totalFromStats).toBe(mockData.length);
 
         const faitIndex = stats.labels.indexOf('Fait');
         expect(faitIndex).not.toBe(-1);
-        expect(stats.data[faitIndex]).toBeGreaterThan(0);
+        expect(stats.data[faitIndex]).toBe(3); // 3 'Fait' in mock data
     });
 
-    it('getIntervenantStats should return a valid structure and plausible data', () => {
+    it('getIntervenantStats should return correct totals and averages', () => {
         const stats = getIntervenantStats();
-        expect(stats).toHaveProperty('chart');
-        expect(stats).toHaveProperty('sideList');
-        expect(stats).toHaveProperty('table');
-        expect(stats.chart.labels.length).toBeGreaterThan(0);
+        expect(stats.table.headers).toContain('Moyenne / jour');
 
-        // Instead of a hardcoded name, let's check the first (and therefore most active) intervenant
-        const topIntervenantName = stats.chart.labels[0];
-        const topIntervenantData = stats.table.rows.find(r => r.Intervenant === topIntervenantName);
+        const infirmier1 = stats.table.rows.find(r => r.Intervenant === 'Infirmier 1');
+        expect(infirmier1).toBeDefined();
+        expect(infirmier1.Total).toBe(3);
+        expect(infirmier1['Moyenne / jour']).toBe('1.50'); // 3 acts / 2 days
 
-        expect(topIntervenantData).toBeDefined();
-        const statusColumns = stats.table.headers.filter(h => h !== 'Intervenant' && h !== 'Total');
-        const calculatedTotal = statusColumns.reduce((sum, col) => sum + (topIntervenantData[col] || 0), 0);
-        expect(topIntervenantData.Total).toBe(calculatedTotal);
+        const infirmier2 = stats.table.rows.find(r => r.Intervenant === 'Infirmier 2');
+        expect(infirmier2).toBeDefined();
+        expect(infirmier2.Total).toBe(1);
+        expect(infirmier2['Moyenne / jour']).toBe('1.00'); // 1 act / 1 day
+
+        const infirmier3 = stats.table.rows.find(r => r.Intervenant === 'Infirmier 3');
+        expect(infirmier3).toBeDefined();
+        expect(infirmier3.Total).toBe(1);
+        expect(infirmier3['Moyenne / jour']).toBe('0.00'); // 1 act / 0 days (null date)
     });
 
-    it('getResidentStats should correctly identify residents with non-fait statuses', () => {
+    it('getResidentStats should return stats for all acts', () => {
         const stats = getResidentStats();
         expect(stats).toHaveProperty('chart');
 
-        // Check that there is at least one resident with non-fait acts if such acts exist in the data
-        const refusDataset = stats.chart.datasets.find(d => d.label === 'Refus du résident');
-        if (refusDataset) {
-            expect(stats.chart.labels.length).toBeGreaterThan(0);
-            const totalRefusals = refusDataset.data.reduce((sum, val) => sum + val, 0);
-            expect(totalRefusals).toBeGreaterThan(0);
-        } else {
-            // If there are no refusals in the test data, the test shouldn't fail.
-            // We can just check that the structure is correct.
-            expect(stats.chart.datasets).toBeInstanceOf(Array);
-        }
+        // Check total acts
+        let totalFromChart = 0;
+        stats.chart.labels.forEach((resident, index) => {
+            stats.chart.datasets.forEach(dataset => {
+                totalFromChart += dataset.data[index];
+            });
+        });
+        expect(totalFromChart).toBe(mockData.length);
+
+        // Check that Mme. Dupont has 2 acts
+        const dupontIndex = stats.chart.labels.indexOf('Mme. Dupont');
+        expect(dupontIndex).not.toBe(-1);
+        const dupontTotal = stats.chart.datasets.reduce((sum, dataset) => sum + dataset.data[dupontIndex], 0);
+        expect(dupontTotal).toBe(2);
     });
 
     it('getOperationnelStats should correctly calculate tablet usage percentage', () => {
         const stats = getOperationnelStats();
         expect(stats).toHaveProperty('chart');
-        expect(stats.chart.labels.length).toBeGreaterThan(0);
-        expect(stats.chart.datasets[0].data.length).toBe(stats.chart.labels.length);
 
-        // Check that all percentages are valid numbers between 0 and 100
-        stats.chart.datasets[0].data.forEach(percentage => {
-            const p = parseFloat(percentage);
-            expect(p).toBeGreaterThanOrEqual(0);
-            expect(p).toBeLessThanOrEqual(100);
-        });
+        const infirmier1Index = stats.chart.labels.indexOf('Infirmier 1');
+        expect(parseFloat(stats.chart.datasets[0].data[infirmier1Index])).toBeCloseTo(66.7, 1); // 2/3 acts on tablet
+
+        const infirmier2Index = stats.chart.labels.indexOf('Infirmier 2');
+        expect(parseFloat(stats.chart.datasets[0].data[infirmier2Index])).toBe(0); // 0/1 acts on tablet
+
+        const infirmier3Index = stats.chart.labels.indexOf('Infirmier 3');
+        expect(parseFloat(stats.chart.datasets[0].data[infirmier3Index])).toBe(100); // 1/1 acts on tablet
     });
 
     it('initializeAnalysis should detect alternative resident column names without polluting state', () => {
         // Save the original context to avoid affecting other tests
-        const originalFullData = context.fullData;
-        const originalFilteredData = context.filteredData;
+        const originalFullData = [...context.fullData];
+        const originalFilteredData = [...context.filteredData];
         const originalColumnNames = { ...context.columnNames };
 
-        const mockData = [{ 'Bénéficiaire': 'Mme. Test', 'État': 'Fait' }];
-        initializeAnalysis(mockData);
+        const mockDataWithAlias = [{ 'Bénéficiaire': 'Mme. Test', 'État': 'Fait' }];
+        initializeAnalysis(mockDataWithAlias);
         expect(context.columnNames.RESIDENT).toBe('Bénéficiaire');
 
         // Restore the original context
