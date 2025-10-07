@@ -113,8 +113,21 @@ export function getIntervenantStats() {
         return acc;
     }, {});
 
+    const tableRows = intervenantsSorted.map(intervenant => {
+        const stats = statsParIntervenant[intervenant];
+        const rowData = { 'Intervenant': intervenant };
+        allEtats.forEach(etat => {
+            rowData[etat] = stats[etat] || 0;
+        });
+        rowData['Total'] = stats.total;
+        const nbJours = stats.days.size;
+        const moyenne = nbJours > 0 ? (stats.total / nbJours) : 0;
+        rowData['Moyenne / jour'] = moyenne.toFixed(2);
+        return rowData;
+    });
+
     return {
-        chart: {
+        chartTotal: {
             labels: intervenantsSorted,
             datasets: allEtats.map(etat => ({
                 label: etat,
@@ -122,25 +135,18 @@ export function getIntervenantStats() {
                 backgroundColor: getStatusColor(etat)
             }))
         },
+        chartAverage: {
+            labels: intervenantsSorted,
+            datasets: [{
+                label: 'Moyenne journalière des actes',
+                data: tableRows.map(row => parseFloat(row['Moyenne / jour'])),
+                backgroundColor: '#3b82f6'
+            }]
+        },
         sideList: Object.entries(soinsRefuses).sort((a, b) => b[1] - a[1]).slice(0, 5),
         table: {
             headers: ['Intervenant', ...allEtats, 'Total', 'Moyenne / jour'],
-            rows: intervenantsSorted.map(intervenant => {
-                const stats = statsParIntervenant[intervenant];
-                const rowData = { 'Intervenant': intervenant };
-
-                allEtats.forEach(etat => {
-                    rowData[etat] = stats[etat] || 0;
-                });
-
-                rowData['Total'] = stats.total;
-
-                const nbJours = stats.days.size;
-                const moyenne = nbJours > 0 ? (stats.total / nbJours) : 0;
-                rowData['Moyenne / jour'] = moyenne.toFixed(2);
-
-                return rowData;
-            })
+            rows: tableRows
         }
     };
 }
@@ -151,28 +157,40 @@ export function getIntervenantStats() {
  */
 export function getResidentStats() {
     const data = context.filteredData;
-    const statsParResident = data.reduce((acc, row) => {
-            const resident = cleanName(row[context.columnNames.RESIDENT]);
-            const etat = row[context.columnNames.ETAT] || 'Non défini';
-            if (!acc[resident]) {
-                acc[resident] = {};
-            }
-            acc[resident][etat] = (acc[resident][etat] || 0) + 1;
-            return acc;
-        }, {});
+    const allEtats = [...new Set(data.map(row => row[context.columnNames.ETAT] || 'Non défini'))].sort();
 
-    const allEtats = [...new Set(data
-        .map(row => row[context.columnNames.ETAT] || 'Non défini')
-    )].sort();
+    const statsParResident = data.reduce((acc, row) => {
+        const resident = cleanName(row[context.columnNames.RESIDENT]);
+        const etat = row[context.columnNames.ETAT] || 'Non défini';
+        const date = row[context.columnNames.DATE_FAIT];
+
+        if (!acc[resident]) {
+            acc[resident] = { total: 0, days: new Set() };
+            allEtats.forEach(e => acc[resident][e] = 0);
+        }
+        acc[resident][etat] = (acc[resident][etat] || 0) + 1;
+        acc[resident].total++;
+
+        if (date) {
+            let dayIdentifier;
+            if (typeof date === 'number') { // Excel serial date
+                dayIdentifier = Math.floor(date);
+            } else if (typeof date === 'string') { // Date string 'JJ/MM/AAAA...'
+                dayIdentifier = date.split(' ')[0];
+            }
+            if (dayIdentifier) {
+                acc[resident].days.add(dayIdentifier);
+            }
+        }
+        return acc;
+    }, {});
 
     const residentsSorted = Object.keys(statsParResident).sort((a, b) => {
-        const totalA = Object.values(statsParResident[a]).reduce((sum, count) => sum + count, 0);
-        const totalB = Object.values(statsParResident[b]).reduce((sum, count) => sum + count, 0);
-        return totalB - totalA;
+        return statsParResident[b].total - statsParResident[a].total;
     });
 
     return {
-        chart: {
+        chartTotal: {
             labels: residentsSorted,
             datasets: allEtats.map(etat => ({
                 label: etat,
@@ -180,9 +198,20 @@ export function getResidentStats() {
                 backgroundColor: getStatusColor(etat)
             }))
         },
+        chartAverage: {
+            labels: residentsSorted,
+            datasets: [{
+                label: 'Moyenne journalière des actes',
+                data: residentsSorted.map(resident => {
+                    const stats = statsParResident[resident];
+                    const nbJours = stats.days.size;
+                    return nbJours > 0 ? (stats.total / nbJours) : 0;
+                }),
+                backgroundColor: '#3b82f6'
+            }]
+        },
         sideList: residentsSorted.map(resident => {
-            const total = Object.values(statsParResident[resident]).reduce((sum, count) => sum + count, 0);
-            return [resident, total];
+            return [resident, statsParResident[resident].total];
         }).slice(0, 5)
     };
 }
