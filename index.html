@@ -48,13 +48,16 @@
             text-decoration: underline;
         }
         /* Style pour les boutons de vue */
-        .intervenant-view-btn {
+        .view-btn {
             background-color: #e5e7eb; /* gray-200 */
             border: 1px solid #d1d5db; /* gray-300 */
             color: #4b5563; /* gray-600 */
             transition: background-color 0.2s;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
         }
-        .intervenant-view-btn.active-view-btn {
+        .view-btn.active-view-btn {
             background-color: #3b82f6; /* blue-500 */
             color: white;
             border-color: #3b82f6;
@@ -177,7 +180,10 @@
                 <!-- Contenu principal (graphique et infos) -->
                 <div id="main-content-area" class="lg:col-span-11 grid grid-cols-1 lg:grid-cols-3 gap-8 transition-all duration-300">
                     <div class="lg:col-span-2 bg-gray-50 p-6 rounded-lg chart-container overflow-auto">
-                        <div id="intervenant-options" class="hidden text-center mb-2"></div>
+                        <div id="view-options" class="hidden text-center mb-4">
+                            <button data-view="total" class="view-btn rounded-l-md active-view-btn">Actes totaux</button>
+                            <button data-view="average" class="view-btn rounded-r-md">Moyenne journalière</button>
+                        </div>
                         <canvas id="main-chart"></canvas>
                     </div>
                     <div id="side-info" class="lg:col-span-1 bg-gray-50 p-6 rounded-lg">
@@ -212,7 +218,7 @@
         const sideInfoContent = document.getElementById('side-content');
         const sideInfoTitle = document.getElementById('side-title');
         const selectAllButtons = document.querySelectorAll('.select-all-btn');
-        const intervenantOptions = document.getElementById('intervenant-options');
+        const viewOptions = document.getElementById('view-options');
         const fullDataTableContainer = document.getElementById('full-data-table-container');
 
         // Éléments pour les filtres
@@ -232,6 +238,23 @@
 
         let chartInstance = null;
         let isFiltersVisible = false;
+        let currentView = 'total'; // 'total' or 'average'
+
+        viewOptions.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                currentView = e.target.dataset.view;
+
+                // Update button styles
+                viewOptions.querySelectorAll('button').forEach(btn => btn.classList.remove('active-view-btn'));
+                e.target.classList.add('active-view-btn');
+
+                // Re-render the current tab's chart
+                const activeTab = document.querySelector('.tab-button.active');
+                if (activeTab) {
+                    displayTabContent(activeTab.dataset.tab);
+                }
+            }
+        });
 
         function processWorkbook(workbook) {
             const firstSheetName = workbook.SheetNames[0];
@@ -482,8 +505,13 @@
         }
 
         function displayTabContent(tabName) {
-            intervenantOptions.classList.add('hidden');
             fullDataTableContainer.classList.add('hidden');
+
+            if (['intervenants', 'residents'].includes(tabName)) {
+                viewOptions.classList.remove('hidden');
+            } else {
+                viewOptions.classList.add('hidden');
+            }
 
             if (context.filteredData.length === 0) {
                 handleEmptyData();
@@ -498,7 +526,9 @@
                     fullDataTableContainer.classList.remove('hidden');
                     displayIntervenantStats();
                     break;
-                case 'residents': displayResidentStats(); break;
+                case 'residents':
+                    displayResidentStats();
+                    break;
                 case 'operationnel': displayOperationnelStats(); break;
             }
         }
@@ -516,8 +546,11 @@
 
         function displayIntervenantStats() {
             const stats = getIntervenantStats();
-            renderChart('bar', 'Répartition des actes par intervenant et par état', stats.chart, 'intervenant', 'x', true);
-
+            if (currentView === 'total') {
+                renderChart('bar', 'Actes totaux par intervenant et par état', stats.chartTotal, 'intervenant', 'x', true);
+            } else {
+                renderChart('bar', 'Moyenne journalière des actes par intervenant', stats.chartAverage, 'intervenant', 'x', false);
+            }
             sideInfoTitle.textContent = "Soins les plus refusés (par type)";
             sideInfoContent.innerHTML = createListHTML(stats.sideList, '#ef4444');
             renderIntervenantTable(stats.table);
@@ -570,8 +603,11 @@
 
         function displayResidentStats() {
             const stats = getResidentStats();
-            renderChart('bar', 'Répartition des actes par résident (par type)', stats.chart, 'resident', 'y', true);
-
+            if (currentView === 'total') {
+                renderChart('bar', 'Actes totaux par résident et par type', stats.chartTotal, 'resident', 'y', true);
+            } else {
+                renderChart('bar', 'Moyenne journalière des actes par résident', stats.chartAverage, 'resident', 'y', false);
+            }
             sideInfoTitle.textContent = "Top 5 des résidents (total des actes)";
             sideInfoContent.innerHTML = createListHTML(stats.sideList);
         }
