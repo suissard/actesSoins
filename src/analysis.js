@@ -245,3 +245,77 @@ export function initializeAnalysis(rawData) {
         // On garde la valeur par défaut au cas où
     }
 }
+/**
+ * Calcule les statistiques pour l'onglet "Analyse Temporelle".
+ * @param {number} intervalMinutes - L'intervalle en minutes pour le regroupement.
+ * @returns {Object} Un objet contenant les données pour le graphique et les informations annexes.
+ */
+export function getTimeStats(intervalMinutes = 30) {
+    const data = context.filteredData;
+    const allEtats = [...new Set(data.map(row => row[context.columnNames.ETAT] || 'Non défini'))].sort();
+
+    const statsParCreneau = data.reduce((acc, row) => {
+        const etat = row[context.columnNames.ETAT] || 'Non défini';
+        const dateStr = row[context.columnNames.DATE_FAIT];
+
+        let label = 'Inconnu';
+
+        if (typeof dateStr === 'string' && dateStr.includes(' à ')) {
+             const timePart = dateStr.split(' à ')[1]; // Ex: "00h10"
+             if (timePart) {
+                 const parts = timePart.split('h');
+                 if (parts.length === 2) {
+                     const h = parseInt(parts[0], 10);
+                     const m = parseInt(parts[1], 10);
+
+                     if (!isNaN(h) && !isNaN(m)) {
+                         const totalMinutes = h * 60 + m;
+                         const bucketStart = Math.floor(totalMinutes / intervalMinutes) * intervalMinutes;
+
+                         // Handle day wrapping (though acts are usually within a day, 24h+ should ideally wrap or be handled)
+                         // Here we assume 0-24h.
+                         const bucketH = Math.floor(bucketStart / 60) % 24;
+                         const bucketM = bucketStart % 60;
+                         label = `${String(bucketH).padStart(2, '0')}h${String(bucketM).padStart(2, '0')}`;
+                     }
+                 }
+             }
+        }
+
+        if (!acc[label]) {
+            acc[label] = {};
+            allEtats.forEach(e => acc[label][e] = 0);
+        }
+        acc[label][etat] = (acc[label][etat] || 0) + 1;
+        return acc;
+    }, {});
+
+    // Generate all possible time slots to ensure X-axis is continuous?
+    // Or just show slots with data?
+    // Usually for time analysis, continuous is better, but let's stick to data-driven for now to avoid sparsity issues if not needed.
+    // However, sorting by time is crucial.
+
+    const timeLabelsSorted = Object.keys(statsParCreneau).sort((a, b) => {
+        if (a === 'Inconnu') return 1;
+        if (b === 'Inconnu') return -1;
+        return a.localeCompare(b);
+    });
+
+    // Side list: Peak hours (Total acts)
+    const peakHours = timeLabelsSorted.map(label => {
+        const total = Object.values(statsParCreneau[label]).reduce((sum, v) => sum + v, 0);
+        return [label, total];
+    }).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    return {
+        chart: {
+            labels: timeLabelsSorted,
+            datasets: allEtats.map(etat => ({
+                label: etat,
+                data: timeLabelsSorted.map(label => statsParCreneau[label][etat] || 0),
+                backgroundColor: getStatusColor(etat)
+            }))
+        },
+        sideList: peakHours
+    };
+}
